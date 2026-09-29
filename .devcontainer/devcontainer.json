@@ -1,6 +1,6 @@
 {
   "name": "Netconomy Frontend Assessment - Scenario B (Senior)",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
   "features": {
     "ghcr.io/devcontainers-contrib/features/pnpm:2": {
       "version": "latest"
@@ -10,11 +10,10 @@
   "portsAttributes": {
     "3001": {
       "label": "Live Telemetry Preview",
-      "onAutoForward": "openPreview"
+      "onAutoForward": "openBrowser"
     }
   },
   "postCreateCommand": "pnpm install",
-  "postStartCommand": "pnpm dev",
   "customizations": {
     "vscode": {
       "settings": {
