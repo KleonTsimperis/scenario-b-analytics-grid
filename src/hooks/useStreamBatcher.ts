@@ -7,6 +7,16 @@ export interface BatcherResult {
   cancel: () => void;
 }
 
+// SOLUTION 1: LEXICAL SCOPE ISOLATION
+// We move timer creation into an independent helper scope.
+// The returned cancel closure ONLY references `createTimer`'s scope (which only holds `timerId`).
+// It does NOT share the V8 Context Record containing `rawBuffer`,
+// allowing V8 to immediately garbage-collect the 40MB buffer upon unmount/cancellation.
+function createTimer(callback: () => void, ms: number) {
+  const timerId = setTimeout(callback, ms);
+  return () => clearTimeout(timerId);
+}
+
 export function useStreamBatcher(channel: string, flushIntervalMs: number = 1000): BatcherResult {
   const [lastBatch, setLastBatch] = useState<StreamPayload[]>([]);
   const [cancelFn, setCancelFn] = useState<() => void>(() => () => {});
@@ -14,13 +24,12 @@ export function useStreamBatcher(channel: string, flushIntervalMs: number = 1000
   useEffect(() => {
     // 1. Heavy allocation: 40MB raw buffer for local tick computations
     const rawBuffer = new ArrayBuffer(40_000_000);
-    
-    // Store weak ref globally so our automated test suite can assert whether V8 GC was able to free it
+
     if (typeof globalThis !== 'undefined') {
       (globalThis as any).__LAST_RAW_BUFFER_REF__ = new WeakRef(rawBuffer);
     }
 
-    // 2. Processing function: closes over `rawBuffer` to compute byte metrics
+    // 2. Processing function: closes over `rawBuffer`
     const processTick = () => {
       const latest = mockWebSocketServer.getLatest(channel);
       if (latest && rawBuffer.byteLength > 0) {
@@ -28,17 +37,8 @@ export function useStreamBatcher(channel: string, flushIntervalMs: number = 1000
       }
     };
 
-    // 3. Native setTimeout schedule
-    const timerId = setTimeout(processTick, flushIntervalMs);
-
-    // INTENTIONAL BUG 1 (The Jake Archibald Closure Leak):
-    // This `cancel` closure ONLY uses `timerId`.
-    // However, because `timerId` and `rawBuffer` are defined in the SAME lexical scope,
-    // and `processTick` references `rawBuffer`, V8 places both on the SAME Context Record.
-    // As long as `cancel` is referenced by the component state, `rawBuffer` CANNOT be collected!
-    const cancel = () => {
-      clearTimeout(timerId);
-    };
+    // 3. Isolated cancel function does NOT share lexical scope with rawBuffer:
+    const cancel = createTimer(processTick, flushIntervalMs);
 
     setCancelFn(() => cancel);
 

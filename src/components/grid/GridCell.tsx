@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useSyncExternalStore, useCallback } from 'react';
 import { useStreamContext } from '@/contexts/StreamContext';
 
 interface GridCellProps {
@@ -6,12 +6,22 @@ interface GridCellProps {
   field: 'price' | 'change' | 'volume';
 }
 
-// INTENTIONAL BUG 2 TARGET:
-// Even with React.memo, this cell re-renders whenever ANY ticker updates because it consumes
-// useStreamContext() which provides an unmemoized object instance!
+// SOLUTION 2:
+// GridCell subscribes ONLY to updates for its specific `symbol` via useSyncExternalStore,
+// completely decoupling it from the global context re-renders of unrelated tickers.
 export const GridCell = React.memo(function GridCell({ symbol, field }: GridCellProps) {
-  const { quotes } = useStreamContext();
-  const quote = quotes[symbol];
+  const { getQuote, subscribeSymbol } = useStreamContext();
+
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => subscribeSymbol(symbol, onStoreChange),
+    [subscribeSymbol, symbol]
+  );
+
+  const quote = useSyncExternalStore(
+    subscribe,
+    () => getQuote(symbol),
+    () => getQuote(symbol)
+  );
 
   // Track renders for automated test assertion
   if (typeof window !== 'undefined') {
